@@ -4,7 +4,7 @@ import "time"
 
 type Stats struct {
 	FileName string
-	BytesIn int
-	BytesOut int
+	BytesIn  int64
+	BytesOut int64
 	Duration time.Duration
 }

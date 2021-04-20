@@ -4,6 +4,5 @@ type Mode int
 
 const (
 	ModeVonNeumann = 0
-	ModeKaminsky = 1
+	ModeKaminsky   = 1
 )
-

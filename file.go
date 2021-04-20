@@ -1,10 +1,11 @@
 package debias
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,31 +17,36 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 
 	start := time.Now()
 
-	data, err := ioutil.ReadFile(file)
+	inFile, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("read", len(data), "bytes from file", file)
+	defer inFile.Close()
 
-	var buf bytes.Buffer
+	reader := bufio.NewReader(inFile)
+
+	var (
+		buf *bytes.Buffer
+		out string
+		ctx context.Context
+	)
 	if mode == ModeKaminsky {
-		buf = Kaminsky(data)
+		buf, ctx, _ = Kaminsky(reader, 512)
+		out = filepath.Join(path, finfo.Name()+"-kaminsky-debiased.bin")
 	} else {
-		buf = VonNeumann(data)
+		buf, ctx, _ = VonNeumann(reader)
+		out = filepath.Join(path, finfo.Name()+"-neumann-debiased.bin")
 	}
 
-	var out string
-	if mode == ModeKaminsky {
-		out = filepath.Join(path, finfo.Name() + "-ka-debiased.bin")
-	} else {
-		out = filepath.Join(path, finfo.Name() + "-vn-debiased.bin")
-	}
+	// wait until processing is complete
+	<-ctx.Done()
 
 	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// write output buffer
 	n, err := f.Write(buf.Bytes())
 	if err != nil {
 		log.Fatal(err)
@@ -49,15 +55,17 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 	dur := time.Since(start)
 	fmt.Println("wrote", n, "bytes to output file", out, "in", dur)
 
+	// close output file handle
 	err = f.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// return stats to caller
 	return &Stats{
 		FileName: finfo.Name(),
-		BytesIn:  len(data),
-		BytesOut: n,
+		BytesIn:  finfo.Size(),
+		BytesOut: int64(n),
 		Duration: dur,
 	}
 }
