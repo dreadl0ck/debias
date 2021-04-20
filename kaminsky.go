@@ -20,14 +20,11 @@ import (
 // - collect discarded bytes
 // - use discarded bytes as input for SHA512
 // - use the SHA512 hash as key for encrypting the output data with AES
-func Kaminsky(reader io.ByteReader, blockSize int64) (*bytes.Buffer, context.Context, context.CancelFunc) {
+func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader, context.Context, context.CancelFunc) {
 	var (
 		// internal buffer
 		buf        bytes.Buffer
 		discardBuf bytes.Buffer
-
-		// returned to caller, contains only bytes that have been encrypted with AES
-		outBuf bytes.Buffer
 
 		// discard byte
 		discardByte     = byte(0)
@@ -40,6 +37,7 @@ func Kaminsky(reader io.ByteReader, blockSize int64) (*bytes.Buffer, context.Con
 		ctx, cancel = context.WithCancel(context.Background())
 
 		numBytes int64
+		pr, pw   = io.Pipe()
 	)
 
 	go func() {
@@ -49,24 +47,25 @@ func Kaminsky(reader io.ByteReader, blockSize int64) (*bytes.Buffer, context.Con
 				// write leftover
 				buf.WriteByte(outByte)
 				discardBuf.WriteByte(discardByte)
-				aesEncrypt(&buf, &discardBuf, &outBuf)
+				aesEncrypt(&buf, &discardBuf, pw)
 				return
 			default:
 				b, err := reader.ReadByte()
 				if err != nil {
 
-					// write leftover
-					buf.WriteByte(outByte)
-					discardBuf.WriteByte(discardByte)
-					aesEncrypt(&buf, &discardBuf, &outBuf)
-					cancel()
-
-					return
+					if !wait {
+						// write leftover
+						buf.WriteByte(outByte)
+						discardBuf.WriteByte(discardByte)
+						aesEncrypt(&buf, &discardBuf, pw)
+						cancel()
+						return
+					}
 				}
 
 				numBytes++
 				if numBytes%blockSize == 0 {
-					aesEncrypt(&buf, &discardBuf, &outBuf)
+					aesEncrypt(&buf, &discardBuf, pw)
 				}
 
 				for j := 0; j < 8; j += 2 {
@@ -108,7 +107,7 @@ func Kaminsky(reader io.ByteReader, blockSize int64) (*bytes.Buffer, context.Con
 		}
 	}()
 
-	return &outBuf, ctx, cancel
+	return pr, ctx, cancel
 }
 
 // this function:
@@ -117,7 +116,7 @@ func Kaminsky(reader io.ByteReader, blockSize int64) (*bytes.Buffer, context.Con
 // - calculates the key based on the key buffer
 // - writes the result in the output buffer
 // - resets the input buffer, but never the key buffer
-func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, outBuf *bytes.Buffer) {
+func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, pw *io.PipeWriter) {
 
 	// create SHA256
 	h := sha256.Sum256(keyBuf.Bytes())
@@ -155,5 +154,5 @@ func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, outBuf *bytes.Buffer) {
 	// never reset key buffer, so it keeps growing
 
 	// write output
-	outBuf.Write(ciphertext)
+	pw.Write(ciphertext)
 }

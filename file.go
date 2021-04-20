@@ -2,10 +2,11 @@ package debias
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -26,15 +27,15 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 	reader := bufio.NewReader(inFile)
 
 	var (
-		buf *bytes.Buffer
+		pr  *io.PipeReader
 		out string
 		ctx context.Context
 	)
 	if mode == ModeKaminsky {
-		buf, ctx, _ = Kaminsky(reader, 512)
+		pr, ctx, _ = Kaminsky(reader, false, 512)
 		out = filepath.Join(path, finfo.Name()+"-kaminsky-debiased.bin")
 	} else {
-		buf, ctx, _ = VonNeumann(reader)
+		pr, ctx, _ = VonNeumann(reader, false)
 		out = filepath.Join(path, finfo.Name()+"-neumann-debiased.bin")
 	}
 
@@ -46,8 +47,13 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 		log.Fatal(err)
 	}
 
+	data, err := ioutil.ReadAll(pr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// write output buffer
-	n, err := f.Write(buf.Bytes())
+	n, err := f.Write(data)
 	if err != nil {
 		log.Fatal(err)
 	}

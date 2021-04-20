@@ -6,34 +6,49 @@ import (
 	"io"
 )
 
+var MaxChunkSize = 1024
+
 // The Von Neumann Debiasing algorithm works on pairs of bits, and produces output as follows:
 // - If the input is "00" or "11", the input is discarded (no output).
 // - If the input is "10", output a "1".
 // - If the input is "01", output a "0".
-func VonNeumann(reader io.ByteReader) (*bytes.Buffer, context.Context, context.CancelFunc) {
+func VonNeumann(reader io.ByteReader, wait bool) (*io.PipeReader, context.Context, context.CancelFunc) {
 	var (
-		buf         bytes.Buffer
 		outByte     = byte(0)
 		bitCount    uint
 		ctx, cancel = context.WithCancel(context.Background())
+		pr, pw      = io.Pipe()
+
+		outBuf bytes.Buffer
 	)
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+
 				// write leftover
-				buf.WriteByte(outByte)
+				outBuf.WriteByte(outByte)
+				pw.Write(outBuf.Bytes())
+
 				return
 			default:
 				b, err := reader.ReadByte()
 				if err != nil {
 
-					// write leftover
-					buf.WriteByte(outByte)
-					cancel()
+					if !wait {
+						// write leftover
+						outBuf.WriteByte(outByte)
+						pw.Write(outBuf.Bytes())
 
-					return
+						cancel()
+						return
+					}
+				}
+
+				if outBuf.Len() + 1 > MaxChunkSize {
+					pw.Write(outBuf.Bytes())
+					outBuf.Reset()
 				}
 
 				for j := 0; j < 8; j += 2 {
@@ -55,7 +70,8 @@ func VonNeumann(reader io.ByteReader) (*bytes.Buffer, context.Context, context.C
 					if bitCount == 8 {
 						bitCount = 0
 
-						buf.WriteByte(outByte)
+						outBuf.WriteByte(outByte)
+
 						//fmt.Printf("%08b\n", outByte)
 						outByte = byte(0)
 					}
@@ -64,5 +80,5 @@ func VonNeumann(reader io.ByteReader) (*bytes.Buffer, context.Context, context.C
 		}
 	}()
 
-	return &buf, ctx, cancel
+	return pr, ctx, cancel
 }
