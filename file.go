@@ -2,11 +2,9 @@ package debias
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,37 +27,49 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 	var (
 		pr  *io.PipeReader
 		out string
-		ctx context.Context
 	)
 	if mode == ModeKaminsky {
-		pr, ctx, _ = Kaminsky(reader, false, 512)
+		pr, _, _ = Kaminsky(reader, false, 512)
 		out = filepath.Join(path, finfo.Name()+"-kaminsky-debiased.bin")
 	} else {
-		pr, ctx, _ = VonNeumann(reader, false)
+		pr, _, _ = VonNeumann(reader, false)
 		out = filepath.Join(path, finfo.Name()+"-neumann-debiased.bin")
 	}
 
+	// TODO: no longer necessary with PipeReader
 	// wait until processing is complete
-	<-ctx.Done()
+	//<-ctx.Done()
 
 	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	data, err := ioutil.ReadAll(pr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	var numBytesWritten int
 
-	// write output buffer
-	n, err := f.Write(data)
-	if err != nil {
-		log.Fatal(err)
+	for {
+		var data = make([]byte, MaxChunkSize)
+		n, err := pr.Read(data)
+		if err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				fmt.Println(err)
+				break
+			}
+			log.Fatal(err)
+		}
+		data = data[:n]
+
+		// write output buffer
+		n, err = f.Write(data)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		numBytesWritten += n
 	}
 
 	dur := time.Since(start)
-	fmt.Println("wrote", n, "bytes to output file", out, "in", dur)
+	fmt.Println("wrote", numBytesWritten, "bytes to output file", out, "in", dur)
 
 	// close output file handle
 	err = f.Close()
@@ -71,7 +81,7 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 	return &Stats{
 		FileName: finfo.Name(),
 		BytesIn:  finfo.Size(),
-		BytesOut: int64(n),
+		BytesOut: int64(numBytesWritten),
 		Duration: dur,
 	}
 }
