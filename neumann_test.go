@@ -3,6 +3,7 @@ package debias_test
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 
@@ -105,6 +106,10 @@ var tests = []test{
 		in:  "10011111111001101001110001111001",
 		out: "1010110010000000", // six trailing zeroes for padding
 	},
+	{
+		in: "1001100110011001",
+		out: "10101010",
+	},
 }
 
 func TestVonNeumann(t *testing.T) {
@@ -136,5 +141,49 @@ func TestVonNeumann(t *testing.T) {
 			fmt.Println("======================= DEBUG ========================")
 			t.Fatal("test #", i, ": expected "+te.out+" ("+strconv.Itoa(len(te.out))+" bits) but got "+fmt.Sprintf("%08b", data)+" ("+strconv.Itoa(len(data)*8)+" bits)")
 		}
+	}
+}
+
+func TestMakeBitPattern1(t *testing.T) {
+
+	f, err := os.Create("10011001.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		b    = bitString("10011001").bytes()
+		size = 1000*1000*1000
+		data = make([]byte, size)
+	)
+	for i:=0;i<size;i++ {
+		data[i] = b[0]
+	}
+
+	_, err = f.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMakeBitPattern2(t *testing.T) {
+
+	f, err := os.Create("01010101.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		b    = bitString("01010101").bytes()
+		size = 1000*1000*1000
+		data = make([]byte, size)
+	)
+	for i:=0;i<size;i++ {
+		data[i] = b[0]
+	}
+
+	_, err = f.Write(data)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
