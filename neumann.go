@@ -54,7 +54,7 @@ func VonNeumann(reader io.ByteReader, wait bool) (*io.PipeReader, context.Contex
 					}
 				}
 
-				if outBuf.Len() + 1 > MaxChunkSize {
+				if outBuf.Len()+1 > MaxChunkSize {
 					pw.Write(outBuf.Bytes())
 					outBuf.Reset()
 				}

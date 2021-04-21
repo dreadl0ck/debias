@@ -38,6 +38,7 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 
 		numBytes int64
 		pr, pw   = io.Pipe()
+		outBuf   bytes.Buffer
 	)
 
 	go func() {
@@ -47,7 +48,7 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 				// write leftover
 				buf.WriteByte(outByte)
 				discardBuf.WriteByte(discardByte)
-				aesEncrypt(&buf, &discardBuf, pw)
+				aesEncrypt(&buf, &discardBuf, pw, &outBuf, true)
 				err := pw.Close()
 				if err != nil {
 					log.Println("failed to close pipe writer:", err)
@@ -61,7 +62,7 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 						// write leftover
 						buf.WriteByte(outByte)
 						discardBuf.WriteByte(discardByte)
-						aesEncrypt(&buf, &discardBuf, pw)
+						aesEncrypt(&buf, &discardBuf, pw, &outBuf, true)
 						err := pw.Close()
 						if err != nil {
 							log.Println("failed to close pipe writer:", err)
@@ -73,7 +74,7 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 
 				numBytes++
 				if numBytes%blockSize == 0 {
-					aesEncrypt(&buf, &discardBuf, pw)
+					aesEncrypt(&buf, &discardBuf, pw, &outBuf, false)
 				}
 
 				for j := 0; j < 8; j += 2 {
@@ -84,7 +85,7 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 					if ch != ch2 {
 
 						if ch == 1 {
-							// store a 1 in our bitbuffer
+							// store a 1 in our bitBuffer
 							outByte = setBit(outByte, 7-outBitCount)
 
 						} // else: leave the buffer alone, it's already 0 at this bit
@@ -123,16 +124,29 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 // - reads the IV via crypto/rand from /dev/random for every invocation
 // - calculates the key based on the key buffer
 // - writes the result in the output buffer
-// - resets the input buffer, but never the key buffer
-func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, pw *io.PipeWriter) {
+// - resets the input buffer and the key buffer
+func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, pw *io.PipeWriter, outBuf *bytes.Buffer, flush bool) {
 
 	// create SHA256
-	h := sha256.Sum256(keyBuf.Bytes())
+	var hash [32]byte
+	if keyBuf.Len() != 0 {
+		// use key buffer contents to create hash
+		hash = sha256.Sum256(keyBuf.Bytes())
+	} else {
+		// key buffer empty: read key base material from /dev/random instead
+		var k = make([]byte, 32)
+		_, err := rand.Read(k)
+		if err != nil {
+			log.Fatal("failed to read from /dev/random")
+		}
+		// create hash
+		hash = sha256.Sum256(k)
+	}
 
 	// convert into []byte to please go compiler
 	var key = make([]byte, 32)
 	for i := 0; i < 32; i++ {
-		key[i] = h[i]
+		key[i] = hash[i]
 	}
 
 	// read random bytes from crypto/rand for the initialization vector
@@ -159,8 +173,30 @@ func aesEncrypt(buf *bytes.Buffer, keyBuf *bytes.Buffer, pw *io.PipeWriter) {
 	// reset internal buffer
 	buf.Reset()
 
-	// never reset key buffer, so it keeps growing
+	// reset key buffer
+	keyBuf.Reset()
 
 	// write output
-	pw.Write(ciphertext)
+	if outBuf.Len()+len(ciphertext) > MaxChunkSize {
+
+		available := MaxChunkSize - outBuf.Len()
+
+		// fill outBuf until MaxChunkSize
+		outBuf.Write(ciphertext[:available])
+
+		// flush outBuf through pipe
+		pw.Write(outBuf.Bytes())
+
+		// reset outBuf and add remaining ciphertext
+		outBuf.Reset()
+		outBuf.Write(ciphertext[available+1:])
+	} else {
+		// collect ciphertext
+		outBuf.Write(ciphertext)
+	}
+
+	if flush {
+		// flush outBuf through pipe
+		pw.Write(outBuf.Bytes())
+	}
 }

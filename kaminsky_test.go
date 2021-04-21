@@ -20,7 +20,7 @@ func TestKaminskyEntropy(t *testing.T) {
 	}
 	data = data[:n]
 
-	if len(data) != 272 {
+	if len(data) != 288 {
 		t.Fatal("unexpected number of output bytes, want 288 but got ", len(data))
 	}
 
