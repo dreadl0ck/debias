@@ -48,6 +48,10 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 				buf.WriteByte(outByte)
 				discardBuf.WriteByte(discardByte)
 				aesEncrypt(&buf, &discardBuf, pw)
+				err := pw.Close()
+				if err != nil {
+					log.Println("failed to close pipe writer:", err)
+				}
 				return
 			default:
 				b, err := reader.ReadByte()
@@ -58,6 +62,10 @@ func Kaminsky(reader io.ByteReader, wait bool, blockSize int64) (*io.PipeReader,
 						buf.WriteByte(outByte)
 						discardBuf.WriteByte(discardByte)
 						aesEncrypt(&buf, &discardBuf, pw)
+						err := pw.Close()
+						if err != nil {
+							log.Println("failed to close pipe writer:", err)
+						}
 						cancel()
 						return
 					}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 )
 
 var MaxChunkSize = 1024
@@ -30,6 +31,10 @@ func VonNeumann(reader io.ByteReader, wait bool) (*io.PipeReader, context.Contex
 				// write leftover
 				outBuf.WriteByte(outByte)
 				pw.Write(outBuf.Bytes())
+				err := pw.Close()
+				if err != nil {
+					log.Println("failed to close pipe writer:", err)
+				}
 
 				return
 			default:
@@ -40,7 +45,10 @@ func VonNeumann(reader io.ByteReader, wait bool) (*io.PipeReader, context.Contex
 						// write leftover
 						outBuf.WriteByte(outByte)
 						pw.Write(outBuf.Bytes())
-
+						err := pw.Close()
+						if err != nil {
+							log.Println("failed to close pipe writer:", err)
+						}
 						cancel()
 						return
 					}
