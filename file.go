@@ -36,10 +36,6 @@ func File(path string, file string, finfo fs.FileInfo, mode Mode) *Stats {
 		out = filepath.Join(path, finfo.Name()+"-neumann-debiased.bin")
 	}
 
-	// TODO: no longer necessary with PipeReader
-	// wait until processing is complete
-	//<-ctx.Done()
-
 	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)

@@ -3,6 +3,7 @@ package debias_test
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -142,6 +143,48 @@ func TestVonNeumann(t *testing.T) {
 			t.Fatal("test #", i, ": expected "+te.out+" ("+strconv.Itoa(len(te.out))+" bits) but got "+fmt.Sprintf("%08b", data)+" ("+strconv.Itoa(len(data)*8)+" bits)")
 		}
 	}
+}
+
+func TestPattern(t *testing.T) {
+
+	var (
+		b    = bitString("10011001").bytes()
+		size = 1000*1000
+		data = make([]byte, size)
+	)
+	for i:=0;i<size;i++ {
+		data[i] = b[0]
+	}
+
+	// apply von neumann debiasing to input buffer
+	pr, _, _ := debias.VonNeumann(bytes.NewBuffer(data), false)
+
+	out, err := ioutil.ReadAll(pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(len(out), "bytes", out[:10])
+}
+
+func TestDiscardAll(t *testing.T) {
+
+	var (
+		b    = bitString("11111111").bytes()
+		size = 1000*1000
+		data = make([]byte, size)
+	)
+	for i:=0;i<size;i++ {
+		data[i] = b[0]
+	}
+
+	// apply von neumann debiasing to input buffer
+	pr, _, _ := debias.VonNeumann(bytes.NewBuffer(data), false)
+
+	out, err := ioutil.ReadAll(pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(out, "bytes", out[:10])
 }
 
 func TestMakeBitPattern1(t *testing.T) {
